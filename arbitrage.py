@@ -13,8 +13,8 @@ for filename in os.scandir('./data/Kaggle'):
 	if filename.is_file():
 		frame = pd.read_csv(filename)
 		frame = frame[['Name','Date','Open']]
-		frame['Date'] = pd.to_datetime(frame['Date']
-)		if coins.empty:
+		frame['Date'] = pd.to_datetime(frame['Date'])		
+		if coins.empty:
 			coins = frame
 		minDates.append(min(frame['Date']))
 		coins = pd.concat([coins,frame],ignore_index=True)
@@ -24,17 +24,18 @@ for filename in os.scandir('./data/Kaggle'):
 
 coins = coins[coins['Date'] >= max(minDates)]
 coins['date_delta'] = (coins['Date'] - coins['Date'].min())  / np.timedelta64(1,'D')
+'''
 with open('arbirageData.txt','w') as f:
 	f.write(coins.to_string())
-
+'''
 X = coins[['date_delta','Open']]
 
-clust = OPTICS().fit_predict(X)
+clusters = OPTICS().fit_predict(X)
+
+coins['clusterLabel'] = clusters
+coins = coins.sort_values(by = 'clusterLabel')
+with open('arbirageData.txt','w') as f:
+	f.write(coins.to_string())
 #print(clusters.core_distances_[clusters.ordering_])
-
-
-space = np.arange(len(X))
-reachability = clust.reachability_[clust.ordering_]
-labels = clust.labels_[clust.ordering_]
 
 
