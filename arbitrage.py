@@ -1,4 +1,5 @@
-from sklearn.cluster import OPTICS, cluster_optics_dbscan
+from sklearn.cluster import OPTICS
+import statsmodels.tsa.stattools as stats
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,8 +35,12 @@ clusters = OPTICS().fit_predict(X)
 
 coins['clusterLabel'] = clusters
 coins = coins.sort_values(by = 'clusterLabel')
+
+conis = coins.drop(coins[coins.clusterLabel == -1].index, inplace = True)
+
+
 with open('arbirageData.txt','w') as f:
 	f.write(coins.to_string())
-#print(clusters.core_distances_[clusters.ordering_])
+
 
 
