@@ -1,74 +1,130 @@
+import pandas
 from sklearn.cluster import OPTICS
 import statsmodels.tsa.stattools as stats
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
+from hurst import compute_Hc
+
 import numpy as np
 import pandas as pd
-import datetime
 import os
 import sys
-np.set_printoptions(threshold=sys.maxsize)
-coins = pd.DataFrame()
-minDates = []
-for filename in os.scandir('./data/Historical/Kaggle'):
-	if filename.is_file():
-		frame = pd.read_csv(filename)
-		frame = frame[['Name','Date','Open']]
-		frame['Date'] = pd.to_datetime(frame['Date'])		
-		if coins.empty:
-			coins = frame
-			minDates.append(min(frame['Date']))
-		else:
-			minDates.append(min(frame['Date']))
-			coins = pd.concat([coins,frame],ignore_index=True)
-		#coins = pd.merge(coins,frame,on='Date',how='inner')
+def main():
+	np.set_printoptions(threshold=sys.maxsize)
+	coins = pd.DataFrame()
+	minDates = []
+	for filename in os.scandir('./data/Historical/Binance'):
+		if filename.is_file():
+
+			if str(filename).split('_')[2][0] == 'd':
+				frame = pd.read_csv(filename,header=1)
+				#print(frame.columns)
+				frame = frame[['symbol','date','open']]
+				frame['date'] = pd.to_datetime(frame['date'])
+				#print(frame)
+				if coins.empty:
+					coins = frame
+					minDates.append(min(frame['date']))
+				else:
+					minDates.append(min(frame['date']))
+					coins = pd.concat([coins,frame],ignore_index=True)
+			#coins = pd.merge(coins,frame,on='Date',how='inner')
+
+			#coins.append(frame)
+	#print(coins)
+	coins = coins[coins['date'] >= max(minDates)]
+	coins['date_delta'] = (coins['date'] - coins['date'].min())  / np.timedelta64(1,'D')
+	maxD = max(coins['date_delta'])
+	#print(maxD)
+	for coin in pd.unique(coins['symbol']):
+		#print(coin)
+		#print(coins[coins['symbol'] == coin]['date_delta'])
+		if max(coins[coins['symbol'] == coin]['date_delta']) < maxD:
+			coins.drop(coins[coins.symbol == coin].index, inplace = True)
+
+		#print(coin)
+	pairs = findPairs(coins)
+	thresholds = calcThresholds(coins,pairs)
+	print(pairs)
+
+	'''
+	Predicted Change = delta_t+1 = (S_t+1 - S_t)/(S_t) * 100
+	S(t): the spread of pair at time t
+	Where S_t+1 is the predicted and S_t is the observed value at time t
+	if delta_t+1 < alpha_l 
+		open short position
+	if delta_t+1 > alpha_s
+		open long position
 		
-		#coins.append(frame)
+	Spread Percentage Change
+		x_t = (S_t - S_t-1)/S_t-1 * 100
+	
+	create distribution based on Spread Percentage Change as f(x)
+	Select top decile and quantile from f(x) > 0 and f(x) < 0
+	
+	test decile and quantile performance in validation set and use better performing
+	
+	
+	
+	'''
+def calcThresholds(coins,pairs):
 
-coins = coins[coins['Date'] >= max(minDates)]
-coins['date_delta'] = (coins['Date'] - coins['Date'].min())  / np.timedelta64(1,'D')
-'''
-with open('arbirageData.txt','w') as f:
-	f.write(coins.to_string())
-'''
-X = coins[['date_delta','Open']]
+def findPairs(coins):
+	X = coins[['date_delta','open']]
 
-clusters = OPTICS().fit_predict(X)
+	clusters = OPTICS().fit_predict(X)
 
-coins['clusterLabel'] = clusters
+	coins['clusterLabel'] = clusters
 
-coins_noOutliers = coins.copy()
-coins_noOutliers.drop(coins[coins.clusterLabel == -1].index, inplace = True)
+	coins_noOutliers = coins.copy()
+	coins_noOutliers.drop(coins[coins.clusterLabel == -1].index, inplace = True)
+	cointegrated = []
+	clusteredCoins = set()
+	for i in range(coins_noOutliers['clusterLabel'].max()+1):
+		names = coins_noOutliers[coins_noOutliers['clusterLabel'] == i]
+		names = names['symbol'].unique()
+		if len(names) > 1:
+			clusteredCoins.add(tuple(names))
+		#print(names)
 
-cointegrated = []
-clusteredCoins = set()
-for i in range(coins_noOutliers['clusterLabel'].max()+1):
-	names = coins_noOutliers[coins_noOutliers['clusterLabel'] == i]
-	names = names['Name'].unique()
-	if len(names) > 1:
-		clusteredCoins.add(tuple(names))
-	#print(names)
+	with open('arbirageData.txt','w') as f:
+		f.write(coins.to_string())
 
-with open('arbirageData.txt','w') as f:
-	f.write(coins.to_string())
+	for ele in clusteredCoins:
+		#print(ele)
+		for i in range(len(ele)-1):
+			for coin2 in ele[i+1:]:
+				co1 = coins[coins['symbol'] == ele[i]]
+				co2 = coins[coins['symbol'] == coin2]
+				#print(co1)
+				#print(co2)
+				#print()
+				coint = stats.coint(co1['open'], co2['open'])
 
-for ele in clusteredCoins:
-	print(ele)
-	for i in range(len(ele)-1):
-		for coin2 in ele[i+1:]:
-			co1 = coins[coins['Name'] == ele[i]]
-			co2 = coins[coins['Name'] == coin2]
+				if coint[1] < 0.05:
+					cointegrated.append((ele[i],coin2))
 
-			#print(len(co1))
-			#print(len(co2))
 
-			coint = stats.coint(co1['Open'], co2['Open'])
-			#print(ele[i])
-			#print(coin2)
-			#print(coint)
-			if coint[1] < 0.05:
-				cointegrated.append((ele[i],coin2))
-print(set(cointegrated))
+	co_pairs = set(cointegrated)
+	coH_pairs = []
+	print(co_pairs)
+	for pair in co_pairs:
+		#print(coins[coins['symbol'] == pair[0]]['open'].to_numpy())
+		#print(coins[coins['symbol'] == pair[1]]['open'].to_numpy())
+		spread = np.subtract(coins[coins['symbol'] == pair[0]]['open'].to_numpy(), coins[coins['symbol'] == pair[1]]['open'].to_numpy())
+		spread = np.absolute(spread)
+		spread[spread==0] = np.finfo(np.float64).eps
+		#print(spread)
+		H, c, data = compute_Hc(spread, kind='price', simplified=True)
+		if H < 0.5:
+			coH_pairs.append(pair)
+
+	return coH_pairs
+
+
+
+
+
+if __name__ == "__main__":
+    main()
 
 
 
