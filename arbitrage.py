@@ -65,6 +65,7 @@ def main():
 	
 	
 	'''
+
 def calcThresholds(coins,pairs):
 
 def findPairs(coins):
