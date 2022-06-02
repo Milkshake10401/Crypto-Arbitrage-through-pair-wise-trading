@@ -42,7 +42,6 @@ def main():
 
 		#print(coin)
 	pairs = findPairs(coins)
-	thresholds = calcThresholds(coins,pairs)
 	print(pairs)
 
 	'''
@@ -66,7 +65,7 @@ def main():
 	
 	'''
 
-def calcThresholds(coins,pairs):
+
 
 def findPairs(coins):
 	X = coins[['date_delta','open']]
@@ -86,8 +85,8 @@ def findPairs(coins):
 			clusteredCoins.add(tuple(names))
 		#print(names)
 
-	with open('arbirageData.txt','w') as f:
-		f.write(coins.to_string())
+	with open('arbitrageData.csv','w') as f:
+		f.write(coins.to_csv())
 
 	for ele in clusteredCoins:
 		#print(ele)
