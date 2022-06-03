@@ -124,7 +124,7 @@ def plot_loss(losses, show=True):
 class CoinsDataset(Dataset):
     def __init__(self, dataset, time_steps=14):
         # One-hot encode dataset
-        dataset = pd.get_dummies(dataset, columns=["symbol"], prefix="coin")
+        #dataset = pd.get_dummies(dataset, columns=["symbol"], prefix="coin")
 
         # Normalize dataset
         data_high = np.asarray(dataset['Open']).reshape(-1, 1)
@@ -139,14 +139,17 @@ class CoinsDataset(Dataset):
         # Split dataset into time periods
         x_dtype = torch.FloatTensor
         y_dtype = torch.FloatTensor
-        dataX, dataY = pd.DataFrame(columns=dataset.columns), pd.DataFrame(columns=dataset.columns)
+        # dataX, dataY = pd.DataFrame(columns=dataset.columns), pd.DataFrame(columns=dataset.columns)
+        dataX, dataY = [], []
         for i in range(int(max(dataset['date_delta'])) - time_steps - 1):
             # print(i)
             for coin in dataset['symbol'].unique():
                 # print(coin)
                 current_coin = dataset[dataset['symbol'] == coin]
-                dataX = pd.concat([dataX, current_coin.iloc[i:i + time_steps]])
-                dataY = pd.concat([dataY, current_coin.iloc[[i + time_steps]]])
+                dataX.append(torch.tensor(current_coin.iloc[i:i + time_steps]['norm_open'].values))
+                dataY.append(torch.tensor(current_coin.iloc[[i + time_steps]]['norm_open'].values))
+                # dataX = pd.concat([dataX, current_coin.iloc[i:i + time_steps]])
+                # dataY = pd.concat([dataY, current_coin.iloc[[i + time_steps]]])
 
         self.length = len(dataX)
 
@@ -160,22 +163,20 @@ class CoinsDataset(Dataset):
         return self.length
 
 
-class LSTMEncoder(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, seq_length):
-        super(LSTMEncoder, self).__init__()
+class LSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers):
+        super(LSTM, self).__init__()
 
         self.num_layers = num_layers  # number of layers
         self.input_size = input_size  # input size
         self.hidden_size = hidden_size  # hidden state
-        self.seq_length = seq_length  # sequence length
 
-        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
-                            num_layers=num_layers)  # lstm
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)  # lstm
 
     def forward(self, x):
-        lstm_out, hidden = self.lstm(x.view(x.shape[0], x.shape[1], self.input_size))
+        out, hidden = self.lstm(x.view(x.shape[0], x.shape[1], self.input_size))
 
-        return lstm_out, hidden
+        return out, hidden
 
     def init_hidden(self, batch_size):
         '''
@@ -188,6 +189,36 @@ class LSTMEncoder(nn.Module):
                 torch.zeros(self.num_layers, batch_size, self.hidden_size))
 
 
+def main():
+    df = pd.read_csv('arbitrageData.csv')
+
+    train = df[df['date_delta'] <= 0.8 * max(df['date_delta'])]
+    test = df[df['date_delta'] > 0.8 * max(df['date_delta'])]
+
+    dataset_train = CoinsDataset(train)
+    dataset_test = CoinsDataset(test)
+
+    print("Train set size: ", dataset_train.length)
+    print("Test set size: ", dataset_test.length)
+
+    losses, y_predict = run(dataset_train=dataset_train, dataset_test=dataset_test)
+
+    print("Final loss:", sum(losses[-100:]) / 100)
+    plot_loss(losses)
+
+    fig2 = pyplot.figure()
+    fig2.set_size_inches(8, 6)
+    pyplot.scatter(x_test, y_test, marker='o', s=0.2)
+    pyplot.scatter(x_test, y_predict, marker='o', s=0.3)
+    pyplot.text(-9, 0.44, "- Prediction", color="orange", fontsize=8)
+    pyplot.text(-9, 0.48, "- Sine (with noise)", color="blue", fontsize=8)
+    pyplot.show()
+
+
+if __name__ == "__main__":
+    main()
+
+'''
 class LSTMDecoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, seq_length):
         super(LSTMDecoder, self).__init__()
@@ -210,14 +241,13 @@ class LSTMDecoder(nn.Module):
 
 
 class lstm_seq2seq(nn.Module):
-    ''' train LSTM encoder-decoder and make predictions '''
-
+     train LSTM encoder-decoder and make predictions 
     def __init__(self, input_size, hidden_size):
 
-        '''
+
         : param input_size:     the number of expected features in the input X
         : param hidden_size:    the number of features in the hidden state h
-        '''
+
 
         super(lstm_seq2seq, self).__init__()
 
@@ -229,7 +259,7 @@ class lstm_seq2seq(nn.Module):
 
     def train_model(self, input_tensor, target_tensor, n_epochs, target_len, batch_size, learning_rate=0.01, dynamic_tf=False):
 
-        '''
+
         train lstm encoder-decoder
 
         : param input_tensor:              input data with shape (seq_len, # in batch, number features); PyTorch tensor
@@ -248,7 +278,7 @@ class lstm_seq2seq(nn.Module):
         : param dynamic_tf:                use dynamic teacher forcing (True/False); dynamic teacher forcing
         :                                  reduces the amount of teacher forcing for each epoch
         : return losses:                   array of loss function for each epoch
-        '''
+
 
         # initialize array of losses
         losses = np.full(n_epochs, np.nan)
@@ -311,31 +341,34 @@ class lstm_seq2seq(nn.Module):
 
         return losses
 
-def main():
-    df = pd.read_csv('arbitrageData.csv')
 
-    train = df[df['date_delta'] <= 0.8 * max(df['date_delta'])]
-    test = df[df['date_delta'] > 0.8 * max(df['date_delta'])]
-
-    dataset_train = CoinsDataset(train)
-    dataset_test = CoinsDataset(test)
-
-    print("Train set size: ", dataset_train.length)
-    print("Test set size: ", dataset_test.length)
-
-    losses, y_predict = run(dataset_train=dataset_train, dataset_test=dataset_test)
-
-    print("Final loss:", sum(losses[-100:]) / 100)
-    plot_loss(losses)
-
-    fig2 = pyplot.figure()
-    fig2.set_size_inches(8, 6)
-    pyplot.scatter(x_test, y_test, marker='o', s=0.2)
-    pyplot.scatter(x_test, y_predict, marker='o', s=0.3)
-    pyplot.text(-9, 0.44, "- Prediction", color="orange", fontsize=8)
-    pyplot.text(-9, 0.48, "- Sine (with noise)", color="blue", fontsize=8)
-    pyplot.show()
+class Linear(nn.Module):
 
 
-if __name__ == "__main__":
-    main()
+    def __init__(self, input_size, time_step):
+        # Perform initialization of the pytorch superclass
+        super(Linear, self).__init__()
+
+        # Define network layer dimensions
+        D_in, H1, H2, D_out = [input_size, input_size / 2, input_size/4,input_size / time_step]  # These numbers correspond to each layer: [input, hidden_1, output]
+
+        # Define layer types
+        self.linear1 = nn.Linear(D_in, H1)
+        self.linear2 = nn.Linear(H1, H2)
+        self.linear3 = nn.Linear(H2, D_out)
+
+
+class LSTM_Linear(nn.Module):
+    def __init__(self, input_size, hidden_size):
+
+
+        super(LSTM_Linear, self).__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+
+        self.lstm = LSTM(input_size=input_size, hidden_size=hidden_size)
+        self.linear = Linear(input_size=input_size)
+
+
+'''

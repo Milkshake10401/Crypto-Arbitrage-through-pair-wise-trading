@@ -29,28 +29,44 @@ def main():
     time_steps = 14
     x_dtype = torch.FloatTensor
     y_dtype = torch.FloatTensor
-    dataX, dataY = pd.DataFrame(columns=dataset.columns), pd.DataFrame(columns=dataset.columns)
+    #dataX, dataY = pd.DataFrame(columns=dataset.columns), pd.DataFrame(columns=dataset.columns)
+    dataX, dataY = [], []
     for i in range(int(max(dataset['date_delta'])) - time_steps - 1):
         #print(i)
         for coin in dataset['symbol'].unique():
             #print(coin)
 
             current_coin = dataset[dataset['symbol'] == coin]
-            dataX = pd.concat([dataX,current_coin.iloc[i:i + time_steps]])
-            dataY = pd.concat([dataY,current_coin.iloc[[i + time_steps]]])
+            dataX.append(torch.tensor(current_coin.iloc[i:i + time_steps]['norm_open'].values))
+            dataY.append(torch.tensor(current_coin.iloc[[i + time_steps]]['norm_open'].values))
+            #dataX = pd.concat([dataX,current_coin.iloc[i:i + time_steps]])
+            #dataY = pd.concat([dataY,current_coin.iloc[[i + time_steps]]])
+
+    length = len(dataX)
+
+    np.set_printoptions(threshold=sys.maxsize)
+    #print(dataX)
+    #print(dataY)
+
+
     with open('dataX.txt','w') as f:
-        f.write(dataX.to_string())
+        for arr in dataX:
+            f.write(str(arr)+'\n')
+
     with open('dataY.txt', 'w') as f:
-        f.write(dataY.to_string())
+        for arr in dataY:
+            f.write(str(arr)+'\n')
 
 
 
 
-    x_data = torch.from_numpy(np.array(dataX)).type(x_dtype)
-    y_data = torch.from_numpy(np.array(dataY)).type(y_dtype)
+    # list of np arrays?
 
-    print(x_data)
-    print(y_data)
+    #x_data = torch.from_numpy(np.array(dataX)).type(x_dtype)
+    # = torch.from_numpy(np.array(dataY)).type(y_dtype)
+
+    #print(x_data)
+    #print(y_data)
 
 
 
