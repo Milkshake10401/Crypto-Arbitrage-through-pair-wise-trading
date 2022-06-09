@@ -126,7 +126,7 @@ def main():
     plt.axvline(x=30, c='r', linestyle='--')  # size of the training set
     plt.xlabel("Days")
     plt.ylabel("Price USD")
-    plt.plot(dataY_plot, label='Actuall Data')  # actual plot
+    plt.plot(dataY_plot, label='Actual Data')  # actual plot
     plt.plot(data_predict, label='Predicted Data')  # predicted plot
     plt.title('Time-Series Prediction')
     plt.legend()
