@@ -121,7 +121,7 @@ def plot_loss(losses, show=True):
     pyplot.close()
 
 
-class CoinsDataset(Dataset):
+class SecuritiesDataset(Dataset):
     def __init__(self, dataset, time_steps=14):
         # One-hot encode dataset
         #dataset = pd.get_dummies(dataset, columns=["symbol"], prefix="coin")

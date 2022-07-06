@@ -36,26 +36,25 @@ class LSTM1(nn.Module):
         out = self.fc(out)  # Final Output
         return out
 
-
-def main():
-    df = pd.read_csv('arbitrageData.csv')
-
+def trainTest(df,pair,target,split):
+    """
+    :param df: pandas dataframe
+    :param target: name of the security to be predicted
+    :param split: scalar determining size of train dataset
+    :return: train pd dataframe, test pd dataframe
+    """
     coins = {}
     for symbol in df['symbol'].unique():
         coins[symbol] = df[df['symbol'] == symbol]
-    #print(coins['SOL/USDT'].head())
-    #print(coins['SOL/USDT'].iloc[:,:-1])
-    #print(coins)
+
     X = pd.DataFrame()
 
-    for symbol in coins.keys():
+    for symbol in pair:
         X[symbol] = coins[symbol]['open'].values
 
-
-
-    print(X.head())
+    #print(X.head())
     Y = pd.DataFrame()
-    Y['COMP/USDT'] = X['COMP/USDT'].values
+    Y[target] = X[target].values
 
     mm = MinMaxScaler()
     ss = StandardScaler()
@@ -63,16 +62,11 @@ def main():
     X = ss.fit_transform(X)
     Y = mm.fit_transform(Y)
 
-    y_train = Y[:int(0.8*Y.shape[0])]
-    y_test = Y[int(0.8*Y.shape[0]):]
+    y_train = Y[:int(split*Y.shape[0])]
+    y_test = Y[int(split*Y.shape[0]):]
 
-    x_train = X[:int(0.8*X.shape[0])]
-    x_test = X[int(0.8*X.shape[0]):]
-
-    print(y_train)
-    print(y_test)
-    print(x_train)
-    print(x_test)
+    x_train = X[:int(split*X.shape[0])]
+    x_test = X[int(split*X.shape[0]):]
 
     X_train_tensors = Variable(torch.Tensor(x_train))
     X_test_tensors = Variable(torch.Tensor(x_test))
@@ -85,29 +79,24 @@ def main():
     X_train_tensors_final = torch.reshape(X_train_tensors, (X_train_tensors.shape[0], 1, X_train_tensors.shape[1]))
     X_test_tensors_final = torch.reshape(X_test_tensors, (X_test_tensors.shape[0], 1, X_test_tensors.shape[1]))
 
-    print("Training Shape", X_train_tensors_final.shape, y_train_tensors.shape)
-    print("Testing Shape", X_test_tensors_final.shape, y_test_tensors.shape)
+    return X_train_tensors_final,X_test_tensors_final,y_train_tensors,y_test_tensors,mm
 
-    num_epochs = 1000  # 1000 epochs
-    learning_rate = 0.001  # 0.001 lr
+def train(lstm1,epochs,criterion,optimizer,x_train,y_train):
+    """
 
-    input_size = 49  # number of features
-    hidden_size = 2  # number of features in hidden state
-    num_layers = 1  # number of stacked lstm layers
+    :param epochs:
+    :param lr:
+    :param criterion:
+    :param optimizer:
+    :return: trained lstm
+    """
 
-    num_classes = 1  # number of output classes
-
-    lstm1 = LSTM1(num_classes, input_size, hidden_size, num_layers, X_train_tensors_final.shape[1])  # our lstm class
-
-    criterion = torch.nn.MSELoss()  # mean-squared error for regression
-    optimizer = torch.optim.Adam(lstm1.parameters(), lr=learning_rate)
-
-    for epoch in range(num_epochs):
-        outputs = lstm1.forward(X_train_tensors_final)  # forward pass
+    for epoch in range(epochs):
+        outputs = lstm1.forward(x_train)  # forward pass
         optimizer.zero_grad()  # caluclate the gradient, manually setting to 0
 
         # obtain the loss function
-        loss = criterion(outputs, y_train_tensors)
+        loss = criterion(outputs, y_train)
 
         loss.backward()  # calculates the loss of the loss function
 
@@ -115,22 +104,82 @@ def main():
         if epoch % 100 == 0:
             print("Epoch: %d, loss: %1.5f" % (epoch, loss.item()))
 
+    return lstm1
 
-    train_predict = lstm1(X_test_tensors_final)  # forward pass
-    data_predict = train_predict.data.numpy()  # numpy conversion
-    dataY_plot = y_test_tensors.data.numpy()
+def test(lstm1,x_test,mm):
+    """
 
-    data_predict = mm.inverse_transform(data_predict)  # reverse transformation
+    :param x_test:
+    :param lstm1:
+    :return:
+    """
+
+    train_predict = lstm1(x_test)  # forward pass
+    return mm.inverse_transform(train_predict.data.numpy())  # numpy conversion and re-scaled
+
+def plot(data_predict,y_test,mm,symbol):
+    """
+
+    :param predict:
+    :param y_test:
+    :return:
+    """
+
+    dataY_plot = y_test.data.numpy()
     dataY_plot = mm.inverse_transform(dataY_plot)
     plt.figure(figsize=(10, 6))  # plotting
-    plt.axvline(x=30, c='r', linestyle='--')  # size of the training set
+
     plt.xlabel("Days")
     plt.ylabel("Price USD")
-    plt.plot(dataY_plot, label='Actual Data')  # actual plot
-    plt.plot(data_predict, label='Predicted Data')  # predicted plot
+    plt.plot(dataY_plot, label='True {name} Price'.format(name=symbol))  # actual plot
+    plt.plot(data_predict, label='Predicted {name} Price'.format(name=symbol))  # predicted plot
     plt.title('Time-Series Prediction')
     plt.legend()
     plt.show()
+
+    return data_predict
+
+def run(df,pairs,learning_rate=0.001,epochs=1000):
+    """
+
+    :param df: dataframe containing time series data
+    :param pairs: list of pairs found by findPairs() in arbitrage.py
+    :return:
+    """
+
+    predictions = []
+    for pair in pairs:
+        for sec in pair:
+            x_train, x_test, y_train, y_test, mm = trainTest(df, pair, sec, 0.7)
+
+            #print("Training Shape", x_train.shape, y_train.shape)
+            #print("Testing Shape", x_test.shape, y_test.shape)
+            print(sec)
+
+            input_size = 2  # number of features
+            hidden_size = 2  # number of features in hidden state
+            num_layers = 1  # number of stacked lstm layers
+
+            num_classes = 1  # number of output classes
+
+            lstm1 = LSTM1(num_classes, input_size, hidden_size, num_layers, x_train.shape[1])  # our lstm class
+
+            criterion = torch.nn.MSELoss()  # mean-squared error for regression
+            optimizer = torch.optim.Adam(lstm1.parameters(), lr=learning_rate)
+
+            lstm1 = train(lstm1, epochs, criterion, optimizer, x_train, y_train)
+
+            predict = test(lstm1, x_test,mm)
+
+            predict_unscaled = plot(predict, y_test, mm,sec)
+            predictions.append((sec,predict_unscaled))
+
+    return predictions
+def main():
+    df = pd.read_csv('arbitrageData.csv')
+
+
+    print(run(df,[('COMP/USDT', 'SOL/USDT'), ('SHIB/USDT', 'TRX/USDT'), ('CELR/USDT', 'DOGE/USDT')],0.001,1000))
     '''
     
 

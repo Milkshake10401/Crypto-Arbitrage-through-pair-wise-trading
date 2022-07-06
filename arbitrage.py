@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 import os
 import sys
+
+import SimpleLSTM
+
 def main():
 	np.set_printoptions(threshold=sys.maxsize)
 	coins = pd.DataFrame()
@@ -44,6 +47,12 @@ def main():
 	pairs = findPairs(coins)
 	print(pairs)
 
+	predictions = SimpleLSTM.run(coins[['open','symbol']],pairs,0.001,1000)
+
+	thresholds = calc_thresholds(predictions)
+	print(thresholds)
+
+
 	'''
 	Predicted Change = delta_t+1 = (S_t+1 - S_t)/(S_t) * 100
 	S(t): the spread of pair at time t
@@ -66,6 +75,37 @@ def main():
 	'''
 
 
+def calc_thresholds(predictions):
+	"""
+
+	:param predictions:
+	:return:
+	"""
+
+	thresholds = {}
+	for ts in predictions:
+		#print(ts)
+		Dp_t = []
+		Dn_t = []
+		for i in range(1,len(ts[1])):
+			D_i = (ts[1][i]-ts[1][i-1])/ts[1][i-1]
+			#print(D_i)
+			if D_i >= 0:
+				Dp_t.append(D_i)
+			else:
+				Dn_t.append(D_i)
+
+		Dp_t = pd.DataFrame(Dp_t, columns=['D_t'])
+		Dn_t = pd.DataFrame(Dn_t, columns=['D_t'])
+
+		#print(ts[0])
+		#print('neg:',Dp_t)
+		#print('pos:',Dn_t)
+		thresholds_pos = Dp_t.quantile([0.1,0.25,0.75,0.9])
+		thresholds_neg = Dn_t.quantile([0.1,0.25,0.75,0.9])
+		thresholds[ts[0]] = [thresholds_pos, thresholds_neg]
+
+	return thresholds
 
 def findPairs(coins):
 	X = coins[['date_delta','open']]
